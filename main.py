@@ -1,68 +1,133 @@
 import os
+import base64
+import re
+from urllib.parse import urlparse, parse_qs
+
 import discord
 from discord.ext import commands
 from discord import app_commands
 
 from myserver import server_on
 
-bot = commands.Bot(command_prefix='!', intents=discord.Intents.all())
+
+bot = commands.Bot(
+    command_prefix='!',
+    intents=discord.Intents.all()
+)
 
 
+# =========================================================
+# Base64 Functions
+# =========================================================
 
-# //////////////////// Bot Event /////////////////////////
-# คำสั่ง bot พร้อมใช้งานแล้ว
+def is_base64(value: str) -> bool:
+    if not value:
+        return False
+
+    # ตรวจรูปแบบ Base64
+    if not re.fullmatch(r'[A-Za-z0-9+/]*={0,2}', value):
+        return False
+
+    try:
+        decoded = base64.b64decode(value, validate=True)
+        return base64.b64encode(decoded).decode() == value
+    except Exception:
+        return False
+
+
+def decode_base64(value: str):
+    if not is_base64(value):
+        return None
+
+    try:
+        return base64.b64decode(value).decode('utf-8')
+    except Exception:
+        return None
+
+
+def get_r_from_url(url: str):
+    try:
+        parsed = urlparse(url)
+        params = parse_qs(parsed.query)
+
+        return params.get('r', [None])[0]
+
+    except Exception:
+        return None
+
+
+# =========================================================
+# Bot Event
+# =========================================================
+
 @bot.event
 async def on_ready():
     print("Bot Online!")
     print("555")
+
     synced = await bot.tree.sync()
+
     print(f"{len(synced)} command(s)")
 
 
-
-
-# แจ้งคนเข้า -ออกเซิฟเวอร์
+# =========================================================
+# Member Join / Leave
+# =========================================================
 
 @bot.event
 async def on_member_join(member):
-    channel = bot.get_channel(1140633489520205934) # IDห้อง
+
+    channel = bot.get_channel(1140633489520205934)
+
     text = f"Welcome to the server, {member.mention}!"
 
-    emmbed = discord.Embed(title = 'Welcome to the server!',
-                           description = text,
-                           color = 0x66FFFF)
+    embed = discord.Embed(
+        title='Welcome to the server!',
+        description=text,
+        color=0x66FFFF
+    )
 
-    await channel.send(text) # ส่งข้อความไปที่ห้องนี้
-    await channel.send(embed = emmbed)  # ส่ง Embed ไปที่ห้องนี้
-    await member.send(text) # ส่งข้อความไปที่แชทส่วนตัวของ member
+    await channel.send(text)
+    await channel.send(embed=embed)
+    await member.send(text)
 
 
 @bot.event
 async def on_member_remove(member):
-    channel = bot.get_channel(1140633489520205934)  # IDห้อง
+
+    channel = bot.get_channel(1140633489520205934)
+
     text = f"{member.name} has left the server!"
-    await channel.send(text)  # ส่งข้อความไปที่ห้องนี้
+
+    await channel.send(text)
 
 
+# =========================================================
+# Chatbot
+# =========================================================
 
-# คำสั่ง chatbot
 @bot.event
 async def on_message(message):
-    mes = message.content # ดึงข้อความที่ถูกส่งมา
+
+    if message.author.bot:
+        return
+
+    mes = message.content
+
     if mes == 'hello':
-        await message.channel.send("Hello It's me") # ส่งกลับไปที่ห้องนั่น
+        await message.channel.send("Hello It's me")
 
     elif mes == 'hi bot':
-        await message.channel.send("Hello, " + str(message.author.name))
+        await message.channel.send(
+            "Hello, " + str(message.author.name)
+        )
 
     await bot.process_commands(message)
-    # ทำคำสั่ง event แล้วไปทำคำสั่ง bot command ต่อ
 
 
-
-
-# ///////////////////// Commands /////////////////////
-# กำหนดคำสั่งให้บอท
+# =========================================================
+# Normal Commands
+# =========================================================
 
 @bot.command()
 async def hello(ctx):
@@ -74,44 +139,164 @@ async def test(ctx, arg):
     await ctx.send(arg)
 
 
+# =========================================================
 # Slash Commands
-@bot.tree.command(name='hellobot', description='Replies with Hello')
+# =========================================================
+
+@bot.tree.command(
+    name='hellobot',
+    description='Replies with Hello'
+)
 async def hellocommand(interaction):
-    await interaction.response.send_message("Hello It's me BOT DISCORD")
+    await interaction.response.send_message(
+        "Hello It's me BOT DISCORD"
+    )
 
 
 @bot.tree.command(name='name')
-@app_commands.describe(name = "What's your name?")
-async def namecommand(interaction, name : str):
-    await interaction.response.send_message(f"Hello {name}")
+@app_commands.describe(name="What's your name?")
+async def namecommand(interaction, name: str):
+
+    await interaction.response.send_message(
+        f"Hello {name}"
+    )
 
 
-# Embeds
+# =========================================================
+# /bypass
+# =========================================================
 
-@bot.tree.command(name='help', description='Bot Commands')
+@bot.tree.command(
+    name='bypass',
+    description='ตรวจสอบและถอดค่า r จาก URL'
+)
+@app_commands.describe(
+    url='ใส่ URL ที่มีพารามิเตอร์ r'
+)
+async def bypasscommand(interaction, url: str):
+
+    # ดึง r จาก URL
+    r = get_r_from_url(url)
+
+    if not r:
+
+        embed = discord.Embed(
+            title='❌ ไม่พบค่า r',
+            description='URL ที่ส่งมาไม่มีพารามิเตอร์ `r`',
+            color=0xFF0000
+        )
+
+        await interaction.response.send_message(
+            embed=embed,
+            ephemeral=True
+        )
+
+        return
+
+    # ตรวจ Base64
+    if not is_base64(r):
+
+        embed = discord.Embed(
+            title='❌ ค่า r ไม่ถูกต้อง',
+            description='ค่า `r` ไม่ใช่ Base64 ที่ถูกต้อง',
+            color=0xFF0000
+        )
+
+        embed.add_field(
+            name='r',
+            value=f'```{r[:1000]}```',
+            inline=False
+        )
+
+        await interaction.response.send_message(
+            embed=embed,
+            ephemeral=True
+        )
+
+        return
+
+    # Decode
+    decoded_url = decode_base64(r)
+
+    if not decoded_url:
+
+        await interaction.response.send_message(
+            '❌ ไม่สามารถถอดรหัสค่า r ได้',
+            ephemeral=True
+        )
+
+        return
+
+    # แสดงผล
+    embed = discord.Embed(
+        title='🔎 Base64 Decoder',
+        color=0x5865F2
+    )
+
+    embed.add_field(
+        name='ค่า r',
+        value=f'```{r[:1000]}```',
+        inline=False
+    )
+
+    embed.add_field(
+        name='URL ที่ถอดออกมา',
+        value=f'```{decoded_url[:1000]}```',
+        inline=False
+    )
+
+    embed.set_footer(
+        text='Base64 URL Decoder'
+    )
+
+    await interaction.response.send_message(
+        embed=embed
+    )
+
+
+# =========================================================
+# Help
+# =========================================================
+
+@bot.tree.command(
+    name='help',
+    description='Bot Commands'
+)
 async def helpcommand(interaction):
-    emmbed = discord.Embed(title='Help Me! - Bot Commands',
-                           description='Bot Commands',
-                           color=0x66FFFF,
-                           timestamp= discord.utils.utcnow())
+
+    embed = discord.Embed(
+        title='Help Me! - Bot Commands',
+        description='Bot Commands',
+        color=0x66FFFF,
+        timestamp=discord.utils.utcnow()
+    )
+
+    embed.add_field(
+        name='/hellobot',
+        value='Hello Command',
+        inline=True
+    )
+
+    embed.add_field(
+        name='/name',
+        value='แสดงชื่อ',
+        inline=True
+    )
+
+    embed.add_field(
+        name='/bypass',
+        value='ตรวจสอบและถอดค่า r จาก URL',
+        inline=False
+    )
+
+    await interaction.response.send_message(
+        embed=embed
+    )
 
 
-    # ใส่ข้อมูล
-    emmbed.add_field(name='/hello1', value='Hello Commmand', inline=True)
-    emmbed.add_field(name='/hello2', value='Hello Commmand', inline=True)
-    emmbed.add_field(name='/hello3', value='Hello Commmand', inline=False)
-
-    emmbed.set_author(name='Author', url='https://www.youtube.com/@maoloop01/channels', icon_url='https://yt3.googleusercontent.com/0qFq3tGT6LVyfLtZc-WCXcV9YyEFQ0M9U5W8qDe36j2xBTN34CJ20dZYQHmBz6aXASmttHI=s900-c-k-c0x00ffffff-no-rj')
-
-    # ใส่รูปเล็ก-ใหญ่
-    emmbed.set_thumbnail(url='https://yt3.googleusercontent.com/0qFq3tGT6LVyfLtZc-WCXcV9YyEFQ0M9U5W8qDe36j2xBTN34CJ20dZYQHmBz6aXASmttHI=s900-c-k-c0x00ffffff-no-rj')
-    emmbed.set_image(url='https://i.ytimg.com/vi/KZRa9DQzUpQ/hq720.jpg?sqp=-oaymwEhCK4FEIIDSFryq4qpAxMIARUAAAAAGAElAADIQj0AgKJD&rs=AOn4CLCfWDgiBYjFJtrUasd5yxmQZJG_cg')
-
-    # Footer เนื้อหาส่วนท้าย
-    emmbed.set_footer(text='Footer', icon_url='https://yt3.googleusercontent.com/0qFq3tGT6LVyfLtZc-WCXcV9YyEFQ0M9U5W8qDe36j2xBTN34CJ20dZYQHmBz6aXASmttHI=s900-c-k-c0x00ffffff-no-rj')
-
-    await interaction.response.send_message(embed = emmbed)
-
+# =========================================================
+# Start Bot
+# =========================================================
 
 server_on()
 
