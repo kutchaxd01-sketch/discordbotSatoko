@@ -162,17 +162,8 @@ async def namecommand(interaction, name: str):
     )
 
 
-# =========================================================
-# /bypass
-# =========================================================
-
-@bot.tree.command(
-    name='bypass',
-    description='ตรวจสอบและถอดค่า r จาก URL'
-)
-@app_commands.describe(
-    url='ใส่ URL ที่มีพารามิเตอร์ r'
-)
+@bot.tree.command(name='bypass',description='ตรวจสอบและถอดค่า r จาก URL')
+@app_commands.describe(url='ใส่ URL ที่มีพารามิเตอร์ r')
 async def bypasscommand(interaction, url: str):
 
     # ดึง r จาก URL
